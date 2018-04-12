@@ -121,19 +121,43 @@ class phase2Taus : public edm::one::EDAnalyzer<edm::one::SharedResources>  {
   float tauPuCorrPtSum_;
   float taufootprintCorrection_;
   float tauphotonPtSumOutsideSignalCone_;
+  
+  static const int maxnum=50;
+  float DR_IsoCandTau[maxnum];
+  float cand_pt[maxnum];
+  float cand_eta[maxnum];
+  float cand_phi[maxnum];
+  float cand_dz_new[maxnum];
+  float cand_dxy_new[maxnum];
+  int cand_q[maxnum];
+  int cand_numHits[maxnum];   
 
+  float gamma_pt[maxnum];
+  float gamma_eta[maxnum];
+  float gamma_phi[maxnum];
 
+  float dz_tt;
+  float dxy_tt;
   double jetPt_;
   double jetEta_;
   double vtxX_, vtxY_, vtxZ_;
   int nvtx_;
   int vtxIndex_;
-  double dz_tt_;
+  //double dz_tt_; Dem
   int dm_;
   int goodReco_;
   int genTauMatch_;
   int genJetMatch_;
   int jetTauMatch_;
+  float tau_iso_dz01; //Dem
+  float tau_iso_dz0015; //Dem
+  float tau_iso_dz01_dz;
+  float tau_iso_dz01_dxy;
+  float tau_iso_dz0015_dz;
+  float tau_iso_dz0015_dxy;
+  float tau_iso_pv; //Dem
+  int Nparticles; 
+  int Ngammas; 
   
   reco::Candidate::LorentzVector GetVisibleP4(std::vector<const reco::GenParticle*>& daughters);
   void findDaughters(const reco::GenParticle* mother, std::vector<const reco::GenParticle*>& daughters);
@@ -185,7 +209,21 @@ phase2Taus::phase2Taus(const edm::ParameterSet& iConfig):
    tree->Branch("vtxY",         &vtxY_,        "vtxY_/D"         );
    tree->Branch("vtxZ",         &vtxZ_,        "vtxZ_/D"         );
    tree->Branch("vtxIndex",     &vtxIndex_,    "vtxIndex_/I"     );
-   tree->Branch("dz_tt", &dz_tt_, "dz_tt_/D"); //////Dem
+   tree->Branch("dz_tt", &dz_tt, "dz_tt/D");
+   tree->Branch("dxy_tt", &dxy_tt, "dxy_tt/D");
+   tree->Branch("Nparticles", &Nparticles, "Nparticles/I"); //////Dem
+   tree->Branch("DR_IsoCandTau", DR_IsoCandTau, "DR_IsoCandTau[Nparticles]/F");
+   tree->Branch("cand_pt", cand_pt, "cand_pt[Nparticles]/F");
+   tree->Branch("cand_eta", cand_eta, "cand_eta[Nparticles]/F");
+   tree->Branch("cand_phi", cand_phi, "cand_phi[Nparticles]/F");
+   tree->Branch("cand_q", cand_q, "cand_q[Nparticles]/I");
+   tree->Branch("cand_numHits", cand_numHits, "cand_numHits[Nparticles]/I");
+   tree->Branch("cand_dz_new", cand_dz_new, "cand_dz_new[Nparticles]/F");
+   tree->Branch("cand_dxy_new", cand_dxy_new, "cand_dxy_new[Nparticles]/F");
+   tree->Branch("Ngammas", &Ngammas, "Ngammas/I"); //////Dem
+   tree->Branch("gamma_pt", gamma_pt, "gamma_pt[Ngammas]/F");
+   tree->Branch("gamma_eta", gamma_eta, "gamma_eta[Ngammas]/F");
+   tree->Branch("gamma_phi", gamma_phi, "gamma_phi[Ngammas]/F");
    tree->Branch("dm",&dm_,"dm_/I");
    tree->Branch("goodReco",&goodReco_,"goodReco_/I");
    tree->Branch("tauMass",&tauMass_,"tauMass_/D");
@@ -200,6 +238,13 @@ phase2Taus::phase2Taus(const edm::ParameterSet& iConfig):
    tree->Branch("tauByIsolationMVArun2v1PWnewDMwLTraw", &tauByIsolationMVArun2v1PWnewDMwLTraw_);
    tree->Branch("tauByIsolationMVArun2v1PWoldDMwLTraw", &tauByIsolationMVArun2v1PWoldDMwLTraw_);
    tree->Branch("tauChargedIsoPtSum"  ,&tauChargedIsoPtSum_);
+   tree->Branch("tau_iso_pv", &tau_iso_pv); //Dem
+   tree->Branch("tau_iso_dz0015", &tau_iso_dz0015);//Dem
+   tree->Branch("tau_iso_dz0015_dz", &tau_iso_dz0015_dz);//Dem
+   tree->Branch("tau_iso_dz0015_dxy", &tau_iso_dz0015_dxy);//Dem
+   tree->Branch("tau_iso_dz01_dz", &tau_iso_dz01_dz);//Dem
+   tree->Branch("tau_iso_dz01_dxy", &tau_iso_dz01_dxy);//Dem
+   tree->Branch("tau_iso_dz01", &tau_iso_dz01); //Dem
    tree->Branch("tauNeutralIsoPtSum"  ,&tauNeutralIsoPtSum_);
    tree->Branch("tauByLooseCombinedIsolationDeltaBetaCorr3Hits", &tauByLooseCombinedIsolationDeltaBetaCorr3Hits_);
    tree->Branch("tauByMediumCombinedIsolationDeltaBetaCorr3Hits", &tauByMediumCombinedIsolationDeltaBetaCorr3Hits_);
@@ -260,8 +305,22 @@ phase2Taus::phase2Taus(const edm::ParameterSet& iConfig):
    jetTree->Branch("vtxX",         &vtxX_,        "vtxX_/D"         );
    jetTree->Branch("vtxY",         &vtxY_,        "vtxY_/D"         );
    jetTree->Branch("vtxZ",         &vtxZ_,        "vtxZ_/D"         ); 
-   jetTree->Branch("dz_tt", &dz_tt_, "dz_tt_/D");
-   //jetTree->Branch("vtxIndex",     &vtxIndex_,    "vtxIndex_/I"     );
+   jetTree->Branch("dz_tt", &dz_tt, "dz_tt/D");
+   jetTree->Branch("dxy_tt", &dxy_tt, "dxy_tt/D");
+   jetTree->Branch("Nparticles", &Nparticles, "Nparticles/I");
+   jetTree->Branch("DR_IsoCandTau", DR_IsoCandTau, "DR_IsoCandTau[Nparticles]/F");
+   jetTree->Branch("cand_pt", cand_pt, "cand_pt[Nparticles]/F");
+   jetTree->Branch("cand_eta", cand_eta, "cand_eta[Nparticles]/F");
+   jetTree->Branch("cand_phi", cand_phi, "cand_phi[Nparticles]/F");
+   jetTree->Branch("cand_q", cand_q, "cand_q[Nparticles]/I");
+   jetTree->Branch("cand_dz_new", cand_dz_new, "cand_dz_new[Nparticles]/F");
+   jetTree->Branch("cand_numHits", cand_numHits, "cand_numHits[Nparticles]/I");
+   jetTree->Branch("cand_xy_new", cand_dxy_new, "cand_dxy_new[Nparticles]/F");
+   jetTree->Branch("Ngammas", &Ngammas, "Ngammas/I"); //////Dem
+   jetTree->Branch("gamma_pt", gamma_pt, "gamma_pt[Ngammas]/F");
+   jetTree->Branch("gamma_eta", gamma_eta, "gamma_eta[Ngammas]/F");
+   jetTree->Branch("gamma_phi", gamma_phi, "gamma_phi[Ngammas]/F");
+   jetTree->Branch("vtxIndex",     &vtxIndex_,    "vtxIndex_/I"     );
    jetTree->Branch("dm",          &dm_,         "dm_/I"          );
    jetTree->Branch("tauMass",      &tauMass_,     "tauMass_/D"      );
    jetTree->Branch("taupfTausDiscriminationByDecayModeFinding", &taupfTausDiscriminationByDecayModeFinding_);
@@ -275,6 +334,13 @@ phase2Taus::phase2Taus(const edm::ParameterSet& iConfig):
    jetTree->Branch("tauByIsolationMVArun2v1PWnewDMwLTraw", &tauByIsolationMVArun2v1PWnewDMwLTraw_);
    jetTree->Branch("tauByIsolationMVArun2v1PWoldDMwLTraw", &tauByIsolationMVArun2v1PWoldDMwLTraw_);
    jetTree->Branch("tauChargedIsoPtSum"  ,&tauChargedIsoPtSum_);
+   jetTree->Branch("tau_iso_dz01", &tau_iso_dz01);
+   jetTree->Branch("tau_iso_dz0015", &tau_iso_dz0015);
+   jetTree->Branch("tau_iso_dz0015_dz", &tau_iso_dz0015_dz);//Dem
+   jetTree->Branch("tau_iso_dz0015_dxy", &tau_iso_dz0015_dxy);//Dem
+   jetTree->Branch("tau_iso_dz01_dz", &tau_iso_dz01_dz);//Dem
+   jetTree->Branch("tau_iso_dz01_dxy", &tau_iso_dz01_dxy);//Dem
+   jetTree->Branch("tau_iso_pv", &tau_iso_pv);
    jetTree->Branch("tauNeutralIsoPtSum"  ,&tauNeutralIsoPtSum_);
    jetTree->Branch("tauByLooseCombinedIsolationDeltaBetaCorr3Hits", &tauByLooseCombinedIsolationDeltaBetaCorr3Hits_);
    jetTree->Branch("tauByMediumCombinedIsolationDeltaBetaCorr3Hits", &tauByMediumCombinedIsolationDeltaBetaCorr3Hits_);
@@ -410,14 +476,29 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
      if(!isATau && !isAEle && !isAMu)
        Jets.push_back(*jetCand);
    }   
-   std::cout<<run_<<":"<<event_<<":"<<lumis_<<std::endl;
+   std::cout<<"Run "<< run_<<" Event "<<event_<<" Lumi section "<<lumis_<<std::endl;
    std::cout<<"RecoTausSize: " <<taus->size()<<std::endl;
    std::cout<<"GenTausSize: "<<GenTaus.size()<<std::endl;
+
+   genTauPt_=-10;
+   genTauEta_=-10;
+
    for(auto genTau : GenTaus){
+   std::cout<<"in gen taus: "<<std::endl;
+
+     std::vector<const reco::GenParticle*> genTauDaughters;
+     findDaughters(genTau, genTauDaughters);
+     reco::Candidate::LorentzVector genTauVis = GetVisibleP4(genTauDaughters);
+     genTauPt_  = (float) genTauVis.pt();
+     genTauEta_ = (float) genTauVis.eta();
+
+     std::cout<<" pt "<<genTauPt_<<" eta "<<genTauEta_<<std::endl;
+
      tauPt_=-10;
      tauEta_=-10;
      tauMass_=-10;
-     
+     genTauMatch_=0;
+     dm_=-10;
      taupfTausDiscriminationByDecayModeFinding_=0;
      taupfTausDiscriminationByDecayModeFindingNewDMs_=0; 
      tauByLooseCombinedIsolationDeltaBetaCorr3Hits_=0;
@@ -437,23 +518,94 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
      taufootprintCorrection_=-10;
      tauphotonPtSumOutsideSignalCone_=-10;
 
-     genTauPt_=-10;
-     genTauEta_=-10;
-     
      nvtx_=-10;
-     dm_=-10;
-     dz_tt_=-10;
      goodReco_=0;
-     genTauMatch_=0;
 
-     std::vector<const reco::GenParticle*> genTauDaughters;
-     findDaughters(genTau, genTauDaughters);
-     reco::Candidate::LorentzVector genTauVis = GetVisibleP4(genTauDaughters);
-     genTauPt_  = (float) genTauVis.pt();
-     genTauEta_ = (float) genTauVis.eta();
+     dz_tt=-10;
+     dxy_tt=-10;
+     for( unsigned i = 0; i < 50; ++i ){
+     DR_IsoCandTau[i]=0;
+     cand_dz_new[i]=0;
+     cand_pt[i]=0;
+     cand_eta[i]=0;
+     cand_phi[i]=0;
+     cand_dxy_new[i]=0;
+     cand_q[i]=0;
+     cand_numHits[i]=0;
+     gamma_pt[i]=0;
+     gamma_eta[i]=0;
+     gamma_phi[i]=0;
+     }
 
-     //std::cout<<" pt "<<genTauPt_<<" eta "<<genTauEta_<<std::endl;
+     tau_iso_dz01=0;
+     tau_iso_dz0015=0;
+     tau_iso_pv=0;
+     tau_iso_dz01_dxy=0;
+     tau_iso_dz01_dz=0;
+     tau_iso_dz0015_dz=0;
+     tau_iso_dz0015_dxy=0;
+
+     Nparticles = 0;
+     Ngammas = 0;
+
      for(const pat::Tau &tau : *taus){
+
+
+   //  Nparticles= 0;
+     //Ngammas = 0;
+/*     tauPt_=-10;
+     tauEta_=-10;
+     tauMass_=-10;
+     genTauMatch_=0;
+     dm_=-10;
+     taupfTausDiscriminationByDecayModeFinding_=0;
+     taupfTausDiscriminationByDecayModeFindingNewDMs_=0; 
+     tauByLooseCombinedIsolationDeltaBetaCorr3Hits_=0;
+     tauByMediumCombinedIsolationDeltaBetaCorr3Hits_=0;
+     tauByTightCombinedIsolationDeltaBetaCorr3Hits_=0;
+       
+     tauCombinedIsolationDeltaBetaCorrRaw3Hits_=-10;  
+     tauByIsolationMVArun2v1DBnewDMwLTraw_=-10;
+     tauByIsolationMVArun2v1DBoldDMwLTraw_=-10;
+     tauByIsolationMVArun2v1PWnewDMwLTraw_=-10;
+     tauByIsolationMVArun2v1PWoldDMwLTraw_=-10;
+     
+     tauChargedIsoPtSum_=-10;
+     tauNeutralIsoPtSum_=-10;
+     tauPuCorrPtSum_=-10;
+
+     taufootprintCorrection_=-10;
+     tauphotonPtSumOutsideSignalCone_=-10;
+
+     nvtx_=-10;
+     goodReco_=0;
+
+     dz_tt=-10;
+     dxy_tt=-10;
+     for( unsigned i = 0; i < 50; ++i ){
+     DR_IsoCandTau[i]=0;
+     cand_dz_new[i]=0;
+     cand_pt[i]=0;
+     cand_eta[i]=0;
+     cand_phi[i]=0;
+     cand_dxy_new[i]=0;
+     cand_q[i]=0;
+     cand_numHits[i]=0;
+     gamma_pt[i]=0;
+     gamma_eta[i]=0;
+     gamma_phi[i]=0;
+     }
+
+     tau_iso_dz01=0;
+     tau_iso_dz0015=0;
+     tau_iso_pv=0;
+     tau_iso_dz01_dxy=0;
+     tau_iso_dz01_dz=0;
+     tau_iso_dz0015_dz=0;
+     tau_iso_dz0015_dxy=0;
+*/
+
+/*
        for(auto cand : tau.isolationChargedHadrCands()){  ///dem
          if (abs(cand->charge())<0)continue;   ///dem >or < Fix
          if (cand->pt()<=0.5 or cand->dxy(vertices[tau_vertex_idxpf].position())>=0.1)continue; /////FIX ME dem
@@ -463,12 +615,13 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 	 }//dem
          dz_tt =cand.dz(vertices[tau_vertex_idxpf].position()); //dem
        } //dem
+*/
        if (reco::deltaR(tau.eta(),tau.phi(),genTauVis.eta(),genTauVis.phi()) < 0.5 && tau.tauID("decayModeFinding")>-1 && tau.tauID("chargedIsoPtSum")>-1){ 
-        //std::cout<<"RecoTauMatched"<<std::endl;
+        std::cout<<"RecoTauMatched"<<std::endl;
         genTauMatch_ = 1;
 	      tauPt_  =tau.pt();
 	      tauEta_ =tau.eta();
-        tauMass_=tau.mass();
+              tauMass_=tau.mass();
 	      dm_ =tau.decayMode();
 
 
@@ -490,8 +643,69 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
         tauphotonPtSumOutsideSignalCone_=tau.tauID("photonPtSumOutsideSignalCone");
 
         goodReco_ = (bool) tau.tauID(tauID_) >0.5;
+        unsigned int tau_vertex_idxpf=-1;
+        pat::PackedCandidate const* packedLeadTauCand = dynamic_cast<pat::PackedCandidate const*>(tau.leadChargedHadrCand().get());
+        tau_vertex_idxpf = packedLeadTauCand->vertexRef().key();
 
-        //get the matched vertex
+        //std::cout<<"Start with charged isolation =" << Nparticles<<std::endl;
+
+        for(auto IsoCand: tau.isolationChargedHadrCands()){
+        pat::PackedCandidate const* cand = dynamic_cast<pat::PackedCandidate const*>(IsoCand.get()); 
+        if (!(abs(cand->charge())>0))continue; 
+        const auto& tau_vertex = (*vertices)[tau_vertex_idxpf];
+        if ((cand->pt()<=0.5) || (cand->dxy(tau_vertex.position())>=0.1))continue;
+        if (cand->hasTrackDetails()){
+           const auto &tt = cand->pseudoTrack();
+           if (tt.normalizedChi2()>=100. || cand->numberOfHits()<3)continue;
+        }
+        //std::cout<<"Nparticles =" << Nparticles<<std::endl; 
+        DR_IsoCandTau[Nparticles] = deltaR(cand->eta(),cand->phi(),tau.eta(),tau.phi()); 
+        //std::cout<<"DR_dem ="<< DR_dem <<std::endl;
+        cand_pt[Nparticles] =cand->pt();
+        cand_eta[Nparticles] =cand->eta();
+        cand_phi[Nparticles] =cand->phi();
+        cand_numHits[Nparticles]=cand->numberOfHits();
+        cand_dz_new[Nparticles] =cand->dz(tau_vertex.position());
+        cand_dxy_new[Nparticles] =cand->dxy(tau_vertex.position());
+        cand_q[Nparticles] =cand->charge();
+        dxy_tt =cand->dxy(tau_vertex.position());
+        dz_tt =cand->dz(tau_vertex.position());
+        if (abs(dz_tt)<0.1){ //MB: should well approximate default charged isolation sum
+           tau_iso_dz01+=cand->pt();
+           tau_iso_dz01_dz+=cand->dz(tau_vertex.position());
+           tau_iso_dz01_dxy+=cand->dxy(tau_vertex.position());
+           //tau_iso_dz01_dxy=+cand->dxy();
+           //tau_iso_dz01_dZ=+cand->dz();
+        }
+        if (abs(dz_tt)<0.015){ //MB: tight dz cut
+           tau_iso_dz0015+=cand->pt();
+           tau_iso_dz0015_dz+=cand->dz(tau_vertex.position());
+           tau_iso_dz0015_dxy+=cand->dxy(tau_vertex.position());
+        }
+        if ((cand->vertexRef().key() == tau_vertex_idxpf) && (cand->pvAssociationQuality() > 4)){ //well associated to tau PV, one can relax qual. criteria
+           tau_iso_pv+=cand->pt();
+        }
+        Nparticles++;
+       }
+
+        //std::cout<<"Start with gammas =" << Ngammas<<std::endl;
+
+        for(auto IsoCand: tau.isolationGammaCands()){
+        pat::PackedCandidate const* cand = dynamic_cast<pat::PackedCandidate const*>(IsoCand.get()); 
+        if (Ngammas==50)break;
+        //std::cout<<"Ngammas =" << Ngammas<<std::endl;
+        gamma_pt[Ngammas] =cand->pt();
+        gamma_eta[Ngammas] =cand->eta();
+        gamma_phi[Ngammas] =cand->phi();
+        Ngammas++;
+        //if (Ngammas==50)break;
+        }
+
+
+
+      //std::cout<<" Nparticles =" << Nparticles << " Ngammas =" << Ngammas <<std::endl;
+
+         //get the matched vertex
         //int vtx_index = -1;
         //float max_weight = 0.f;
         //for( unsigned i = 0; i < vertices->size(); ++i ) {
@@ -541,10 +755,15 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 	      vtxZ_ = vtx.z();
 	      break;
 */ //Fix for Puppi
+     //goto fill_ntuple;
             }
+     //std::cout<<"4: I am in genTauMatch " << genTauMatch_ << " tauPt " << tauPt_ << std::endl;
           }
+        //std::cout<<"5: I am in genTauMatch " << genTauMatch_ << " tauPt " << tauPt_ << std::endl;
 
-    tree->Fill(); 
+   //fill_ntuple:  
+   tree->Fill(); 
+
    }
 /*
    //duplicating the code above for OrigTaus (built with Orig PFTaus from AOD)
@@ -754,11 +973,15 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
     }
 */
    //jetTree for OrigTaus
+     jetPt_=0;
+     jetEta_=0;
+
    for(auto jet : Jets){
      tauPt_=-10;
      tauEta_=-10;
      tauMass_=-10;
-
+     genTauMatch_=0;
+     dm_=-10;
      taupfTausDiscriminationByDecayModeFinding_=0;
      taupfTausDiscriminationByDecayModeFindingNewDMs_=0; 
      tauByLooseCombinedIsolationDeltaBetaCorr3Hits_=0;
@@ -777,27 +1000,54 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 
      taufootprintCorrection_=-10;
      tauphotonPtSumOutsideSignalCone_=-10;
+
+     nvtx_=-10;
+     goodReco_=0;
+  
+     dz_tt=-10;
+     dxy_tt=-10;
+     for( unsigned i = 0; i < 50; ++i ){
+     DR_IsoCandTau[i]=0;
+     cand_dz_new[i]=0;
+     cand_pt[i]=0;
+     cand_eta[i]=0;
+     cand_phi[i]=0;
+     cand_dxy_new[i]=0;
+     cand_q[i]=0;
+     cand_numHits[i]=0;
+     gamma_pt[i]=0;
+     gamma_eta[i]=0;
+     gamma_phi[i]=0;
+     }
+
+     tau_iso_dz01=0;
+     tau_iso_dz0015=0;
+     tau_iso_pv=0;
+     tau_iso_dz01_dxy=0;
+     tau_iso_dz01_dz=0;
+     tau_iso_dz0015_dz=0;
+     tau_iso_dz0015_dxy=0;
+
+     Nparticles = 0;
+     Ngammas = 0;
+     genJetMatch_ = 0;
+
      jetPt_=jet.pt();
      jetEta_=jet.eta();
-     
-     //nvtx_=-10;
-     dm_=-10;
-     dz_tt_=-10;
-     jetTauMatch_=0;
-
-     genJetMatch_ = 0;
 
      for (unsigned int iGenJet = 0; iGenJet < genJets->size() ; ++iGenJet){
        reco::GenJetRef genJet(genJets, iGenJet);
        if(genJet->pt() < 18 )continue;
        if (reco::deltaR(genJet->eta(),genJet->phi(),jet.eta(),jet.phi()) < 0.1){
           //&& genJet->pt() > 20 && abs(genJet->pt()-jet.pt())/abs(jet.pt())<=2 ???
+           std::cout<<"Recojetsmached"<<std::endl;
          genJetMatch_ = 1;
          break;
         }
     }
 
      for(const pat::Tau &tau : *taus){   // Fix it was *tausOrg??
+/*
        for(auto cand : tau.isolationChargedHadrCands()){  ///dem
          if (abs(cand.charge())<0)continue;   ///dem >or < Fix
          if (cand.pt()<=0.5 or cand.dxy(vertices[tau_vertex_idxpf].position())>=0.1)continue; /////FIX ME dem
@@ -807,8 +1057,63 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
          }//dem
          dz_tt =cand.dz(vertices[tau_vertex_idxpf].position()); //dem
        } //dem
+*/
+     //Ngammas=0;
+/* 
+     tauPt_=-10;
+     tauEta_=-10;
+     tauMass_=-10;
+     genTauMatch_=0;
+     dm_=-10;
+     taupfTausDiscriminationByDecayModeFinding_=0;
+     taupfTausDiscriminationByDecayModeFindingNewDMs_=0; 
+     tauByLooseCombinedIsolationDeltaBetaCorr3Hits_=0;
+     tauByMediumCombinedIsolationDeltaBetaCorr3Hits_=0;
+     tauByTightCombinedIsolationDeltaBetaCorr3Hits_=0;
+       
+     tauCombinedIsolationDeltaBetaCorrRaw3Hits_=-10;  
+     tauByIsolationMVArun2v1DBnewDMwLTraw_=-10;
+     tauByIsolationMVArun2v1DBoldDMwLTraw_=-10;
+     tauByIsolationMVArun2v1PWnewDMwLTraw_=-10;
+     tauByIsolationMVArun2v1PWoldDMwLTraw_=-10;
+     
+     tauChargedIsoPtSum_=-10;
+     tauNeutralIsoPtSum_=-10;
+     tauPuCorrPtSum_=-10;
 
+     taufootprintCorrection_=-10;
+     tauphotonPtSumOutsideSignalCone_=-10;
+
+     nvtx_=-10;
+     goodReco_=0;
+
+     Nparticles=0;
+     Ngammas=0;
+     dz_tt=-10;
+     dxy_tt=-10;
+     for( unsigned i = 0; i < 50; ++i ){
+     DR_IsoCandTau[i]=0;
+     cand_dz_new[i]=0;
+     cand_pt[i]=0;
+     cand_eta[i]=0;
+     cand_phi[i]=0;
+     cand_dxy_new[i]=0;
+     cand_q[i]=0;
+     cand_numHits[i]=0;
+     gamma_pt[i]=0;
+     gamma_eta[i]=0;
+     gamma_phi[i]=0;
+     }
+
+     tau_iso_dz01=0;
+     tau_iso_dz0015=0;
+     tau_iso_pv=0;
+     tau_iso_dz01_dxy=0;
+     tau_iso_dz01_dz=0;
+     tau_iso_dz0015_dz=0;
+*/
        if (reco::deltaR(tau.eta(),tau.phi(),jet.eta(),jet.phi()) < 0.3 && tau.tauID("decayModeFinding")>-1 && tau.tauID("chargedIsoPtSum")>-1){
+          std::cout<<"RecoTauMatched2"<<std::endl;
 	      jetTauMatch_ = 1;
 	      tauPt_  =tau.pt();
 	      tauEta_ =tau.eta();
@@ -831,7 +1136,64 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
         tauPuCorrPtSum_=tau.tauID("puCorrPtSum");
         taufootprintCorrection_=tau.tauID("footprintCorrection");
         tauphotonPtSumOutsideSignalCone_=tau.tauID("photonPtSumOutsideSignalCone");
-        //get the matched vertex
+        unsigned int tau_vertex_idxpf=-1;
+
+        pat::PackedCandidate const* packedLeadTauCand = dynamic_cast<pat::PackedCandidate const*>(tau.leadChargedHadrCand().get());
+        tau_vertex_idxpf = packedLeadTauCand->vertexRef().key();
+
+        for(auto IsoCand: tau.isolationChargedHadrCands()){
+           pat::PackedCandidate const* cand = dynamic_cast<pat::PackedCandidate const*>(IsoCand.get());
+           if (!(abs(cand->charge())>0))continue;
+           const auto& tau_vertex = (*vertices)[tau_vertex_idxpf];
+           if ((cand->pt()<=0.5) || (cand->dxy(tau_vertex.position())>=0.1))continue;
+           if (cand->hasTrackDetails()){
+              const auto &tt = cand->pseudoTrack();
+              if (tt.normalizedChi2()>=100. || cand->numberOfHits()<3)continue;
+          }
+          DR_IsoCandTau[Nparticles] = deltaR(cand->eta(),cand->phi(),tau.eta(),tau.phi());
+          cand_pt[Nparticles] =cand->pt();
+          cand_eta[Nparticles] =cand->eta();
+          cand_phi[Nparticles] =cand->phi();
+          cand_numHits[Nparticles]=cand->numberOfHits();
+          cand_dz_new[Nparticles] =cand->dz(tau_vertex.position());
+          cand_dxy_new[Nparticles] =cand->dxy(tau_vertex.position());
+          cand_q[Nparticles] =cand->charge();
+          dxy_tt =cand->dxy(tau_vertex.position());
+          dz_tt =cand->dz(tau_vertex.position());
+
+          if (abs(dz_tt)<0.1){ //MB: should well approximate default charged isolation sum
+             tau_iso_dz01+=cand->pt();
+             tau_iso_dz01_dz+=cand->dz(tau_vertex.position());
+             tau_iso_dz01_dxy+=cand->dxy(tau_vertex.position());
+         }
+         if (abs(dz_tt)<0.015){ //MB: tight dz cut
+            tau_iso_dz0015+=cand->pt();
+            tau_iso_dz0015_dz+=cand->dz(tau_vertex.position());
+            tau_iso_dz0015_dxy+=cand->dxy(tau_vertex.position());
+        }
+        if ((cand->vertexRef().key() == tau_vertex_idxpf) && (cand->pvAssociationQuality() > 4)){ //well associated to tau PV, one can relax qual. criteria
+        tau_iso_pv+=cand->pt();
+        }
+        Nparticles++;
+       } 
+
+        //std::cout<<"Start with jets gammas =" << Ngammas<<std::endl;
+
+        for(auto IsoCand: tau.isolationGammaCands()){
+        pat::PackedCandidate const* cand = dynamic_cast<pat::PackedCandidate const*>(IsoCand.get()); 
+        //std::cout<<"Ngammas =" << Ngammas<<std::endl;
+        if (Ngammas==50)break;
+        gamma_pt[Ngammas] =cand->pt();
+        gamma_eta[Ngammas] =cand->eta();
+        gamma_phi[Ngammas] =cand->phi();
+        Ngammas++;
+        //if (Ngammas==50)break;
+        }
+
+
+
+     // std::cout<<" Nparticles =" << Nparticles << " Ngammas =" << Ngammas <<std::endl;
+       //get the matched vertex
        // int vtx_index = -1;// fix
         //float max_weight = 0.f;
         //for( unsigned i = 0; i < vertices->size(); ++i ) {
@@ -851,14 +1213,19 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 //	      vtxZ_ = vtx.z();
 	      
   //      break;
+            //goto fill_ntuple1;
             }
+  //          goto fill_ntuple1; //std::cout<<"4: I am in genTauMatch " << genTauMatch_ << " tauPt " << tauPt_ << std::endl;
           }
-    jetTree->Fill(); //Fix it was jetOrgjetTree
-
+          //std::cout<<"5: I am in genTauMatch " << genTauMatch_ << " tauPt " << tauPt_ << std::endl;
+   //fill_ntuple1: 
+//      fill_ntuple1: 
+        jetTree->Fill(); //Fix it was jetOrgjetTree
+        std::cout<<"TREE END1"<<std::endl;
     }
-
+      std::cout<<"TREE END2"<<std::endl;
 }
-
+//std::cout<<"TREE END3"<<std::endl;
 // ------------ method called once each job just before starting event loop  ------------
 void 
 phase2Taus::beginJob()
