@@ -8,10 +8,10 @@ cmsenv
 git cms-init
 git cms-addpkg RecoTauTag/RecoTau
 cd RecoTauTag
-git clone -b TwoTauCollections git@github.com:uhussain/TauPerformancePhaseII.git
+git clone -b TwoTauCollections https://github.com/Dtsiak5/TauPerformancePhaseII_dem.git  
 cd ../
 scram b -j 8
-cd RecoTauTag/phase2Taus/test
+cd RecoTauTag/TauPerformancePhaseII/test
 cmsRun runTauEfficiency.py
 
 ```
