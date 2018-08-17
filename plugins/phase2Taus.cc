@@ -162,9 +162,9 @@ class phase2Taus : public edm::one::EDAnalyzer<edm::one::SharedResources>  {
   float tau_iso_pv; //Dem
   int Nparticles; 
   int Ngammas; 
-  bool isTau = false;
-  bool iselectron = false;
-  bool ismuon = false;
+  //bool isTau = false;
+  //bool iselectron = false;
+  //bool ismuon = false;
 
 	enum decayModes{
 		electron,
@@ -534,6 +534,7 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
      pat::JetRef jetCand(jetHandle, iJet);
      if(jetCand->pt() < 18 )continue;
      bool isATau=false;
+
      for(auto genTau : GenTaus){
        std::vector<const reco::GenParticle*> genTauDaughters;
        findDaughters(genTau, genTauDaughters);
@@ -542,8 +543,8 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
        genTauEta_ = (float) genTauVis.eta();
        if (reco::deltaR(jetCand->eta(),jetCand->phi(),genTauVis.eta(),genTauVis.phi()) < 0.5)
 	        isATau=true;
-       
      }
+
      bool isAEle=false;
      for(auto genEle : GenEles){
        if (reco::deltaR(jetCand->eta(),jetCand->phi(),genEle->eta(),genEle->phi()) < 0.5)
@@ -556,10 +557,18 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
      }
      if(!isATau && !isAEle && !isAMu)
        Jets.push_back(*jetCand);
-   }   
+   } 
+   bool isLeptonic = false;
+   bool isHadronic = false;
+
+   for (auto genTau :GenTaus){
+     if (getGenTauDecayMode(genTau) == electron||muon) isLeptonic=true;
+     else isHadronic=true;
+    }   
    std::cout<<"Run "<< run_<<" Event "<<event_<<" Lumi section "<<lumis_<<std::endl;
    std::cout<<"RecoTausSize: " <<taus->size()<<std::endl;
    std::cout<<"GenTausSize: "<<GenTaus.size()<<std::endl;
+  
 
    genTauPt_=-10;
    genTauEta_=-10;
@@ -1412,24 +1421,9 @@ phase2Taus::decayModes phase2Taus::getGenTauDecayMode(const reco::GenParticle* g
 		countDecayProducts<reco::GenParticle>(genTau,
 			numElectrons, numElecNeutrinos, numMuons, numMuNeutrinos,
 			numChargedHadrons, numPi0s, numOtherNeutralHadrons, numPhotons);
-
-                if (genTau!=0) {
-                  isTau=true;
-		}
                    
 		if      ( numElectrons == 1 && numElecNeutrinos == 1 ) return electron;
 		else if ( numMuons     == 1 && numMuNeutrinos   == 1 ) return muon;
-
-                if ( electron !=0) {
-                  iselectron = true;
-                }
-                if (muon !=0){
-                  ismuon =true;
-		}
-                
-                if ( isTau ){                
-                isTau = isTau && !(iselectron||ismuon);
-                }
                
 		switch ( numChargedHadrons ) {
 		case 1 :
