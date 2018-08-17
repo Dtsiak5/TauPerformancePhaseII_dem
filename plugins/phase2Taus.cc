@@ -118,12 +118,14 @@ class phase2Taus : public edm::one::EDAnalyzer<edm::one::SharedResources>  {
   //Tau Ingredients
   float tauChargedIsoPtSum_;
   float tauNeutralIsoPtSum_;
+  float tauNeutralIsoPtSumR03_;
   float tauPuCorrPtSum_;
   float taufootprintCorrection_;
   float tauphotonPtSumOutsideSignalCone_;
   
-  static const int maxnum=50;
+  static const int maxnum=100;
   float DR_IsoCandTau[maxnum];
+  float DR_gamma[maxnum];
   float cand_pt[maxnum];
   float cand_eta[maxnum];
   float cand_phi[maxnum];
@@ -133,6 +135,8 @@ class phase2Taus : public edm::one::EDAnalyzer<edm::one::SharedResources>  {
   int cand_numHits[maxnum];   
 
   float gamma_pt[maxnum];
+  float gamma1_pt[maxnum];
+  float gamma2_pt[maxnum];
   float gamma_eta[maxnum];
   float gamma_phi[maxnum];
 
@@ -158,7 +162,30 @@ class phase2Taus : public edm::one::EDAnalyzer<edm::one::SharedResources>  {
   float tau_iso_pv; //Dem
   int Nparticles; 
   int Ngammas; 
-  
+  bool isTau = false;
+  bool iselectron = false;
+  bool ismuon = false;
+
+	enum decayModes{
+		electron,
+		muon,
+		oneProngOther,
+		oneProng0Pi0,
+		oneProng1Pi0,
+		oneProng2Pi0,
+		threeProngOther,
+		threeProng0Pi0,
+		threeProng1Pi0,
+		rare,
+		other
+	};
+
+	decayModes getGenTauDecayMode(const reco::GenParticle* genTau)const;
+
+	template<class T>
+	void countDecayProducts(const T* genParticle,
+			int& numElectrons, int& numElecNeutrinos, int& numMuons, int& numMuNeutrinos,
+			int& numChargedHadrons, int& numPi0s, int& numOtherNeutralHadrons, int& numPhotons) const;  
   reco::Candidate::LorentzVector GetVisibleP4(std::vector<const reco::GenParticle*>& daughters);
   void findDaughters(const reco::GenParticle* mother, std::vector<const reco::GenParticle*>& daughters);
   bool isNeutrino(const reco::Candidate* daughter);
@@ -180,7 +207,45 @@ class phase2Taus : public edm::one::EDAnalyzer<edm::one::SharedResources>  {
 
 //
 // constructors and destructor
-//
+
+template<class T>
+void phase2Taus::countDecayProducts(const T* genParticle,
+		int& numElectrons, int& numElecNeutrinos, int& numMuons, int& numMuNeutrinos,
+		int& numChargedHadrons, int& numPi0s, int& numOtherNeutralHadrons, int& numPhotons)const{
+
+	if(!genParticle)return;
+
+	int absPdgId = TMath::Abs(genParticle->pdgId());
+	int status   = genParticle->status();
+	int charge   = genParticle->charge();
+
+	if ( absPdgId == 111 ) ++numPi0s;
+	else if ( status == 1 ) {
+		if      ( absPdgId == 11 ) ++numElectrons;
+		else if ( absPdgId == 12 ) ++numElecNeutrinos;
+		else if ( absPdgId == 13 ) ++numMuons;
+		else if ( absPdgId == 14 ) ++numMuNeutrinos;
+		else if ( absPdgId == 15 ) {
+			edm::LogError ("genDecayHelper::countDecayProducts")
+			<< "Found tau lepton with status code 1 !!";
+			return;
+		}
+		else if ( absPdgId == 16 ) return; // no need to count tau neutrinos
+		else if ( absPdgId == 22 ) ++numPhotons;
+		else if ( charge   !=  0 ) ++numChargedHadrons;
+		else                       ++numOtherNeutralHadrons;
+	} else {
+		unsigned numDaughters = genParticle->numberOfDaughters();
+		for ( unsigned iDaughter = 0; iDaughter < numDaughters; ++iDaughter ) {
+			const reco::GenParticle* daughter = dynamic_cast<const reco::GenParticle*>(genParticle->daughter(iDaughter));
+
+			countDecayProducts<reco::GenParticle>(daughter,
+					numElectrons, numElecNeutrinos, numMuons, numMuNeutrinos,
+					numChargedHadrons, numPi0s, numOtherNeutralHadrons, numPhotons);
+		}
+	}
+}
+
 phase2Taus::phase2Taus(const edm::ParameterSet& iConfig):
   vtxToken_(consumes<std::vector<reco::Vertex> >(iConfig.getParameter<edm::InputTag>("vertices"))),
   tauToken_(consumes<pat::TauCollection>(iConfig.getParameter<edm::InputTag>("taus"))),
@@ -213,6 +278,7 @@ phase2Taus::phase2Taus(const edm::ParameterSet& iConfig):
    tree->Branch("dxy_tt", &dxy_tt, "dxy_tt/D");
    tree->Branch("Nparticles", &Nparticles, "Nparticles/I"); //////Dem
    tree->Branch("DR_IsoCandTau", DR_IsoCandTau, "DR_IsoCandTau[Nparticles]/F");
+   //tree->Branch("DR_gamma", DR_gamma, "DR_gamma[Nparticles]/F");
    tree->Branch("cand_pt", cand_pt, "cand_pt[Nparticles]/F");
    tree->Branch("cand_eta", cand_eta, "cand_eta[Nparticles]/F");
    tree->Branch("cand_phi", cand_phi, "cand_phi[Nparticles]/F");
@@ -221,7 +287,10 @@ phase2Taus::phase2Taus(const edm::ParameterSet& iConfig):
    tree->Branch("cand_dz_new", cand_dz_new, "cand_dz_new[Nparticles]/F");
    tree->Branch("cand_dxy_new", cand_dxy_new, "cand_dxy_new[Nparticles]/F");
    tree->Branch("Ngammas", &Ngammas, "Ngammas/I"); //////Dem
+   tree->Branch("DR_gamma", DR_gamma, "DR_gamma[Ngammas]/F");//dem
    tree->Branch("gamma_pt", gamma_pt, "gamma_pt[Ngammas]/F");
+   tree->Branch("gamma1_pt", gamma1_pt, "gamma1_pt[Ngammas]/F");//dem
+   tree->Branch("gamma2_pt", gamma2_pt, "gamma2_pt[Ngammas]/F"); //dem
    tree->Branch("gamma_eta", gamma_eta, "gamma_eta[Ngammas]/F");
    tree->Branch("gamma_phi", gamma_phi, "gamma_phi[Ngammas]/F");
    tree->Branch("dm",&dm_,"dm_/I");
@@ -231,10 +300,10 @@ phase2Taus::phase2Taus(const edm::ParameterSet& iConfig):
    tree->Branch("taupfTausDiscriminationByDecayModeFindingNewDMs", &taupfTausDiscriminationByDecayModeFindingNewDMs_);
    tree->Branch("tauByIsolationMVArun2v1DBnewDMwLTraw", &tauByIsolationMVArun2v1DBnewDMwLTraw_);
    tree->Branch("tauByIsolationMVArun2v1DBoldDMwLTraw", &tauByIsolationMVArun2v1DBoldDMwLTraw_);
-   tree->Branch("tauByIsolationMVArun2v1PWnewDMwLTraw", &tauByIsolationMVArun2v1PWnewDMwLTraw_);
-   tree->Branch("tauByIsolationMVArun2v1PWoldDMwLTraw", &tauByIsolationMVArun2v1PWoldDMwLTraw_);
-   tree->Branch("tauByIsolationMVArun2v1DBnewDMwLTraw", &tauByIsolationMVArun2v1DBnewDMwLTraw_);
-   tree->Branch("tauByIsolationMVArun2v1DBoldDMwLTraw", &tauByIsolationMVArun2v1DBoldDMwLTraw_);
+  // tree->Branch("tauByIsolationMVArun2v1PWnewDMwLTraw", &tauByIsolationMVArun2v1PWnewDMwLTraw_);
+  // tree->Branch("tauByIsolationMVArun2v1PWoldDMwLTraw", &tauByIsolationMVArun2v1PWoldDMwLTraw_);
+  //// tree->Branch("tauByIsolationMVArun2v1DBnewDMwLTraw", &tauByIsolationMVArun2v1DBnewDMwLTraw_);
+  // tree->Branch("tauByIsolationMVArun2v1DBoldDMwLTraw", &tauByIsolationMVArun2v1DBoldDMwLTraw_);
    tree->Branch("tauByIsolationMVArun2v1PWnewDMwLTraw", &tauByIsolationMVArun2v1PWnewDMwLTraw_);
    tree->Branch("tauByIsolationMVArun2v1PWoldDMwLTraw", &tauByIsolationMVArun2v1PWoldDMwLTraw_);
    tree->Branch("tauChargedIsoPtSum"  ,&tauChargedIsoPtSum_);
@@ -246,6 +315,7 @@ phase2Taus::phase2Taus(const edm::ParameterSet& iConfig):
    tree->Branch("tau_iso_dz01_dxy", &tau_iso_dz01_dxy);//Dem
    tree->Branch("tau_iso_dz01", &tau_iso_dz01); //Dem
    tree->Branch("tauNeutralIsoPtSum"  ,&tauNeutralIsoPtSum_);
+   tree->Branch("tauNeutralIsoPtSumR03"  ,&tauNeutralIsoPtSumR03_);
    tree->Branch("tauByLooseCombinedIsolationDeltaBetaCorr3Hits", &tauByLooseCombinedIsolationDeltaBetaCorr3Hits_);
    tree->Branch("tauByMediumCombinedIsolationDeltaBetaCorr3Hits", &tauByMediumCombinedIsolationDeltaBetaCorr3Hits_);
    tree->Branch("tauByTightCombinedIsolationDeltaBetaCorr3Hits", &tauByTightCombinedIsolationDeltaBetaCorr3Hits_);
@@ -253,6 +323,8 @@ phase2Taus::phase2Taus(const edm::ParameterSet& iConfig):
    tree->Branch("tauPuCorrPtSum"  ,&tauPuCorrPtSum_);
    tree->Branch("taufootprintCorrection"  ,&taufootprintCorrection_);
    tree->Branch("tauphotonPtSumOutsideSignalCone"  ,&tauphotonPtSumOutsideSignalCone_);
+   tree->Branch("electron", electron, "electron/I");
+   tree->Branch("muon", muon, "muon/I");
    /*
    OrgTaustree = fs->make<TTree>("OrgPFTaus", "OrgPFTaus");
    OrgTaustree->Branch("run",     &run_);
@@ -309,6 +381,8 @@ phase2Taus::phase2Taus(const edm::ParameterSet& iConfig):
    jetTree->Branch("dxy_tt", &dxy_tt, "dxy_tt/D");
    jetTree->Branch("Nparticles", &Nparticles, "Nparticles/I");
    jetTree->Branch("DR_IsoCandTau", DR_IsoCandTau, "DR_IsoCandTau[Nparticles]/F");
+   //jetTree->Branch("DR_gamma", DR_gamma, "DR_gamma[Nparticles]/F");
+
    jetTree->Branch("cand_pt", cand_pt, "cand_pt[Nparticles]/F");
    jetTree->Branch("cand_eta", cand_eta, "cand_eta[Nparticles]/F");
    jetTree->Branch("cand_phi", cand_phi, "cand_phi[Nparticles]/F");
@@ -317,7 +391,10 @@ phase2Taus::phase2Taus(const edm::ParameterSet& iConfig):
    jetTree->Branch("cand_numHits", cand_numHits, "cand_numHits[Nparticles]/I");
    jetTree->Branch("cand_xy_new", cand_dxy_new, "cand_dxy_new[Nparticles]/F");
    jetTree->Branch("Ngammas", &Ngammas, "Ngammas/I"); //////Dem
+   jetTree->Branch("DR_gamma", DR_gamma, "DR_gamma[Ngammas]/F");
    jetTree->Branch("gamma_pt", gamma_pt, "gamma_pt[Ngammas]/F");
+   jetTree->Branch("gamma1_pt", gamma1_pt, "gamma1_pt[Ngammas]/F");
+   jetTree->Branch("gamma2_pt", gamma2_pt, "gamma2_pt[Ngammas]/F");
    jetTree->Branch("gamma_eta", gamma_eta, "gamma_eta[Ngammas]/F");
    jetTree->Branch("gamma_phi", gamma_phi, "gamma_phi[Ngammas]/F");
    jetTree->Branch("vtxIndex",     &vtxIndex_,    "vtxIndex_/I"     );
@@ -325,10 +402,10 @@ phase2Taus::phase2Taus(const edm::ParameterSet& iConfig):
    jetTree->Branch("tauMass",      &tauMass_,     "tauMass_/D"      );
    jetTree->Branch("taupfTausDiscriminationByDecayModeFinding", &taupfTausDiscriminationByDecayModeFinding_);
    jetTree->Branch("taupfTausDiscriminationByDecayModeFindingNewDMs", &taupfTausDiscriminationByDecayModeFindingNewDMs_);
-   jetTree->Branch("tauByIsolationMVArun2v1DBnewDMwLTraw", &tauByIsolationMVArun2v1DBnewDMwLTraw_);
-   jetTree->Branch("tauByIsolationMVArun2v1DBoldDMwLTraw", &tauByIsolationMVArun2v1DBoldDMwLTraw_);
-   jetTree->Branch("tauByIsolationMVArun2v1PWnewDMwLTraw", &tauByIsolationMVArun2v1PWnewDMwLTraw_);
-   jetTree->Branch("tauByIsolationMVArun2v1PWoldDMwLTraw", &tauByIsolationMVArun2v1PWoldDMwLTraw_);
+  // jetTree->Branch("tauByIsolationMVArun2v1DBnewDMwLTraw", &tauByIsolationMVArun2v1DBnewDMwLTraw_);
+  // jetTree->Branch("tauByIsolationMVArun2v1DBoldDMwLTraw", &tauByIsolationMVArun2v1DBoldDMwLTraw_);
+   //jetTree->Branch("tauByIsolationMVArun2v1PWnewDMwLTraw", &tauByIsolationMVArun2v1PWnewDMwLTraw_);
+   //jetTree->Branch("tauByIsolationMVArun2v1PWoldDMwLTraw", &tauByIsolationMVArun2v1PWoldDMwLTraw_);
    jetTree->Branch("tauByIsolationMVArun2v1DBnewDMwLTraw", &tauByIsolationMVArun2v1DBnewDMwLTraw_);
    jetTree->Branch("tauByIsolationMVArun2v1DBoldDMwLTraw", &tauByIsolationMVArun2v1DBoldDMwLTraw_);
    jetTree->Branch("tauByIsolationMVArun2v1PWnewDMwLTraw", &tauByIsolationMVArun2v1PWnewDMwLTraw_);
@@ -342,6 +419,7 @@ phase2Taus::phase2Taus(const edm::ParameterSet& iConfig):
    jetTree->Branch("tau_iso_dz01_dxy", &tau_iso_dz01_dxy);//Dem
    jetTree->Branch("tau_iso_pv", &tau_iso_pv);
    jetTree->Branch("tauNeutralIsoPtSum"  ,&tauNeutralIsoPtSum_);
+   jetTree->Branch("tauNeutralIsoPtSumR03"  ,&tauNeutralIsoPtSumR03_);
    jetTree->Branch("tauByLooseCombinedIsolationDeltaBetaCorr3Hits", &tauByLooseCombinedIsolationDeltaBetaCorr3Hits_);
    jetTree->Branch("tauByMediumCombinedIsolationDeltaBetaCorr3Hits", &tauByMediumCombinedIsolationDeltaBetaCorr3Hits_);
    jetTree->Branch("tauByTightCombinedIsolationDeltaBetaCorr3Hits", &tauByTightCombinedIsolationDeltaBetaCorr3Hits_);
@@ -349,6 +427,9 @@ phase2Taus::phase2Taus(const edm::ParameterSet& iConfig):
    jetTree->Branch("tauPuCorrPtSum"  ,&tauPuCorrPtSum_);
    jetTree->Branch("taufootprintCorrection"  ,&taufootprintCorrection_);
    jetTree->Branch("tauphotonPtSumOutsideSignalCone"  ,&tauphotonPtSumOutsideSignalCone_);
+   //jetTree->Branch("electron", electron, "electron/I");
+   //jetTree->Branch("muon", muon, "muon/I");
+
    /*
    OrgTausjetTree = fs->make<TTree>(      "jetOrgPFTaus",   "jetOrgPFTaus"       );
    OrgTausjetTree->Branch("run",     &run_);
@@ -513,6 +594,7 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
      
      tauChargedIsoPtSum_=-10;
      tauNeutralIsoPtSum_=-10;
+     tauNeutralIsoPtSumR03_=-10;
      tauPuCorrPtSum_=-10;
 
      taufootprintCorrection_=-10;
@@ -523,8 +605,9 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 
      dz_tt=-10;
      dxy_tt=-10;
-     for( unsigned i = 0; i < 50; ++i ){
+     for( unsigned i = 0; i < 100; ++i ){
      DR_IsoCandTau[i]=0;
+     DR_gamma[i]=0;
      cand_dz_new[i]=0;
      cand_pt[i]=0;
      cand_eta[i]=0;
@@ -533,6 +616,8 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
      cand_q[i]=0;
      cand_numHits[i]=0;
      gamma_pt[i]=0;
+     gamma1_pt[i]=0;
+     gamma2_pt[i]=0;
      gamma_eta[i]=0;
      gamma_phi[i]=0;
      }
@@ -551,8 +636,9 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
      for(const pat::Tau &tau : *taus){
 
 
-   //  Nparticles= 0;
-     //Ngammas = 0;
+     Nparticles= 0;
+     Ngammas = 0;
+
 /*     tauPt_=-10;
      tauEta_=-10;
      tauMass_=-10;
@@ -617,7 +703,7 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
        } //dem
 */
        if (reco::deltaR(tau.eta(),tau.phi(),genTauVis.eta(),genTauVis.phi()) < 0.5 && tau.tauID("decayModeFinding")>-1 && tau.tauID("chargedIsoPtSum")>-1){ 
-        std::cout<<"RecoTauMatched"<<std::endl;
+        //std::cout<<"RecoTauMatched"<<std::endl;
         genTauMatch_ = 1;
 	      tauPt_  =tau.pt();
 	      tauEta_ =tau.eta();
@@ -638,6 +724,7 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 
         tauChargedIsoPtSum_=tau.tauID("chargedIsoPtSum");
         tauNeutralIsoPtSum_=tau.tauID("neutralIsoPtSum");
+        tauNeutralIsoPtSumR03_=tau.tauID("neutralIsoPtSumdR03");
         tauPuCorrPtSum_=tau.tauID("puCorrPtSum");
         taufootprintCorrection_=tau.tauID("footprintCorrection");
         tauphotonPtSumOutsideSignalCone_=tau.tauID("photonPtSumOutsideSignalCone");
@@ -692,18 +779,36 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 
         for(auto IsoCand: tau.isolationGammaCands()){
         pat::PackedCandidate const* cand = dynamic_cast<pat::PackedCandidate const*>(IsoCand.get()); 
-        if (Ngammas==50)break;
-        //std::cout<<"Ngammas =" << Ngammas<<std::endl;
-        gamma_pt[Ngammas] =cand->pt();
-        gamma_eta[Ngammas] =cand->eta();
-        gamma_phi[Ngammas] =cand->phi();
-        Ngammas++;
-        //if (Ngammas==50)break;
+//        std::cout<<"Ngammas =" << Ngammas<<std::endl;
+          if ( cand->pt() > 0.5 ) {
+          gamma_pt[Ngammas] =cand->pt();
+	  DR_gamma[Ngammas] = deltaR(cand->eta(),cand->phi(),tau.eta(),tau.phi());
+          gamma_eta[Ngammas] =cand->eta();
+          gamma_phi[Ngammas] =cand->phi();
+          if (cand->pdgId() == 22){
+          gamma1_pt[Ngammas] =cand->pt();
+          }
+          if (cand->pdgId() !=22){ 
+            if (abs(cand->pdgId())!=11) std::cout<<"not an electron"<<std::endl;
+            if (abs(cand->pdgId())==11){
+             const auto& tau_vertex = (*vertices)[tau_vertex_idxpf];
+               if (abs(cand->dxy(tau_vertex.position()))>=0.1 || abs(cand->dz(tau_vertex.position()))>=0.2)continue;
+            if (cand->hasTrackDetails()){
+            const auto &tt =cand->bestTrack();
+             if (tt->normalizedChi2()>=100. || cand->numberOfHits()<3)continue;
+                  }
+               gamma2_pt[Ngammas] =cand->pt();
+                      
+             }
+           }  
+          Ngammas++;
+          if (Ngammas==100)break;
+         }
         }
 
 
 
-      //std::cout<<" Nparticles =" << Nparticles << " Ngammas =" << Ngammas <<std::endl;
+	// std::cout<<" Nparticles =" << Nparticles << " Ngammas =" << Ngammas <<std::endl;
 
          //get the matched vertex
         //int vtx_index = -1;
@@ -755,14 +860,14 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 	      vtxZ_ = vtx.z();
 	      break;
 */ //Fix for Puppi
-     //goto fill_ntuple;
+     goto fill_ntuple;
             }
-     //std::cout<<"4: I am in genTauMatch " << genTauMatch_ << " tauPt " << tauPt_ << std::endl;
+       // std::cout<<"4: I am in genTauMatch " << genTauMatch_ << " tauPt " << tauPt_ << std::endl;
           }
-        //std::cout<<"5: I am in genTauMatch " << genTauMatch_ << " tauPt " << tauPt_ << std::endl;
+     // std::cout<<"5: I am in genTauMatch " << genTauMatch_ << " tauPt " << tauPt_ << std::endl;
 
-   //fill_ntuple:  
-   tree->Fill(); 
+fill_ntuple:   tree->Fill(); 
+     //std::cout<<"Filled taus " << genTauMatch_ << " tauPt " << tauPt_ << std::endl;
 
    }
 /*
@@ -996,6 +1101,7 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
      
      tauChargedIsoPtSum_=-10;
      tauNeutralIsoPtSum_=-10;
+     tauNeutralIsoPtSumR03_=-10;
      tauPuCorrPtSum_=-10;
 
      taufootprintCorrection_=-10;
@@ -1006,7 +1112,7 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
   
      dz_tt=-10;
      dxy_tt=-10;
-     for( unsigned i = 0; i < 50; ++i ){
+     for( unsigned i = 0; i < 100; ++i ){
      DR_IsoCandTau[i]=0;
      cand_dz_new[i]=0;
      cand_pt[i]=0;
@@ -1016,6 +1122,9 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
      cand_q[i]=0;
      cand_numHits[i]=0;
      gamma_pt[i]=0;
+     gamma1_pt[i]=0;
+     gamma2_pt[i]=0;
+     DR_gamma[i]=0;
      gamma_eta[i]=0;
      gamma_phi[i]=0;
      }
@@ -1040,13 +1149,15 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
        if(genJet->pt() < 18 )continue;
        if (reco::deltaR(genJet->eta(),genJet->phi(),jet.eta(),jet.phi()) < 0.1){
           //&& genJet->pt() > 20 && abs(genJet->pt()-jet.pt())/abs(jet.pt())<=2 ???
-           std::cout<<"Recojetsmached"<<std::endl;
          genJetMatch_ = 1;
          break;
         }
     }
 
      for(const pat::Tau &tau : *taus){   // Fix it was *tausOrg??
+
+     Nparticles = 0;
+     Ngammas = 0;
 /*
        for(auto cand : tau.isolationChargedHadrCands()){  ///dem
          if (abs(cand.charge())<0)continue;   ///dem >or < Fix
@@ -1058,7 +1169,6 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
          dz_tt =cand.dz(vertices[tau_vertex_idxpf].position()); //dem
        } //dem
 */
-     //Ngammas=0;
 /* 
      tauPt_=-10;
      tauEta_=-10;
@@ -1113,7 +1223,6 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
      tau_iso_dz0015_dz=0;
 */
        if (reco::deltaR(tau.eta(),tau.phi(),jet.eta(),jet.phi()) < 0.3 && tau.tauID("decayModeFinding")>-1 && tau.tauID("chargedIsoPtSum")>-1){
-          std::cout<<"RecoTauMatched2"<<std::endl;
 	      jetTauMatch_ = 1;
 	      tauPt_  =tau.pt();
 	      tauEta_ =tau.eta();
@@ -1133,6 +1242,7 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 
         tauChargedIsoPtSum_=tau.tauID("chargedIsoPtSum");
         tauNeutralIsoPtSum_=tau.tauID("neutralIsoPtSum");
+        tauNeutralIsoPtSumR03_=tau.tauID("neutralIsoPtSumdR03");
         tauPuCorrPtSum_=tau.tauID("puCorrPtSum");
         taufootprintCorrection_=tau.tauID("footprintCorrection");
         tauphotonPtSumOutsideSignalCone_=tau.tauID("photonPtSumOutsideSignalCone");
@@ -1177,22 +1287,39 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
         Nparticles++;
        } 
 
-        //std::cout<<"Start with jets gammas =" << Ngammas<<std::endl;
+        std::cout<<"Start with jets gammas =" << Ngammas<<std::endl;
 
         for(auto IsoCand: tau.isolationGammaCands()){
         pat::PackedCandidate const* cand = dynamic_cast<pat::PackedCandidate const*>(IsoCand.get()); 
-        //std::cout<<"Ngammas =" << Ngammas<<std::endl;
-        if (Ngammas==50)break;
-        gamma_pt[Ngammas] =cand->pt();
-        gamma_eta[Ngammas] =cand->eta();
-        gamma_phi[Ngammas] =cand->phi();
-        Ngammas++;
-        //if (Ngammas==50)break;
+//        std::cout<<"Ngammas =" << Ngammas<<std::endl;
+        if ( cand->pt() > 0.5 ) {
+	  DR_gamma[Ngammas]=deltaR(cand->eta(),cand->phi(),tau.eta(),tau.phi());
+          gamma_pt[Ngammas] =cand->pt();
+          gamma_eta[Ngammas] =cand->eta();
+          gamma_phi[Ngammas] =cand->phi();
+          if (cand->pdgId() == 22){
+          gamma1_pt[Ngammas] =cand->pt();
+          }
+          if (cand->pdgId() !=22){
+            if (abs(cand->pdgId())!=11) std::cout<<"not an electron"<<std::endl;
+            if (abs(cand->pdgId())==11){
+             const auto& tau_vertex = (*vertices)[tau_vertex_idxpf];
+               if (abs(cand->dxy(tau_vertex.position()))>=0.1 || abs(cand->dz(tau_vertex.position()))>=0.2)continue;
+            if (cand->hasTrackDetails()){
+            const auto &ttt =cand->bestTrack();
+             if (ttt->normalizedChi2()>=100. || cand->numberOfHits()<3)continue;
+		}
+               gamma2_pt[Ngammas] =cand->pt();
+             }
+           }
+          Ngammas++;
+        if (Ngammas==100)break;
+         }
         }
 
 
 
-     // std::cout<<" Nparticles =" << Nparticles << " Ngammas =" << Ngammas <<std::endl;
+      //std::cout<<" Nparticles =" << Nparticles << " Ngammas =" << Ngammas <<std::endl;
        //get the matched vertex
        // int vtx_index = -1;// fix
         //float max_weight = 0.f;
@@ -1213,19 +1340,19 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 //	      vtxZ_ = vtx.z();
 	      
   //      break;
-            //goto fill_ntuple1;
+            goto fill_ntuple1;
             }
-  //          goto fill_ntuple1; //std::cout<<"4: I am in genTauMatch " << genTauMatch_ << " tauPt " << tauPt_ << std::endl;
+  //          goto fill_ntuple1; 
+       //  std::cout<<"4: I am in genTauMatch " << genTauMatch_ << " tauPt " << tauPt_ << std::endl;
           }
-          //std::cout<<"5: I am in genTauMatch " << genTauMatch_ << " tauPt " << tauPt_ << std::endl;
-   //fill_ntuple1: 
-//      fill_ntuple1: 
-        jetTree->Fill(); //Fix it was jetOrgjetTree
-        std::cout<<"TREE END1"<<std::endl;
+     // std::cout<<"5: I am in genTauMatch " << genTauMatch_ << " tauPt " << tauPt_ << std::endl;
+fill_ntuple1:       jetTree->Fill(); //Fix it was jetOrgjetTree
+     // std::cout<<" filled the tree " << genTauMatch_ << " tauPt " << tauPt_ << std::endl;
+
     }
-      std::cout<<"TREE END2"<<std::endl;
+
 }
-//std::cout<<"TREE END3"<<std::endl;
+
 // ------------ method called once each job just before starting event loop  ------------
 void 
 phase2Taus::beginJob()
@@ -1272,7 +1399,66 @@ void phase2Taus::findDaughters(const reco::GenParticle* mother, std::vector<cons
     }
   }
 }
+phase2Taus::decayModes phase2Taus::getGenTauDecayMode(const reco::GenParticle* genTau)const{
+        	int numElectrons           = 0;
+		int numElecNeutrinos       = 0;
+		int numMuons               = 0;
+		int numMuNeutrinos         = 0;
+		int numChargedHadrons      = 0;
+		int numPi0s                = 0;
+		int numOtherNeutralHadrons = 0;
+		int numPhotons             = 0;
+               
+		countDecayProducts<reco::GenParticle>(genTau,
+			numElectrons, numElecNeutrinos, numMuons, numMuNeutrinos,
+			numChargedHadrons, numPi0s, numOtherNeutralHadrons, numPhotons);
 
+                if (genTau!=0) {
+                  isTau=true;
+		}
+                   
+		if      ( numElectrons == 1 && numElecNeutrinos == 1 ) return electron;
+		else if ( numMuons     == 1 && numMuNeutrinos   == 1 ) return muon;
+
+                if ( electron !=0) {
+                  iselectron = true;
+                }
+                if (muon !=0){
+                  ismuon =true;
+		}
+                
+                if ( isTau ){                
+                isTau = isTau && !(iselectron||ismuon);
+                }
+               
+		switch ( numChargedHadrons ) {
+		case 1 :
+			if ( numOtherNeutralHadrons != 0 ) return oneProngOther;
+			switch ( numPi0s ) {
+			case 0:
+				return oneProng0Pi0;
+			case 1:
+				return oneProng1Pi0;
+			case 2:
+				return oneProng2Pi0;
+			default:
+				return oneProngOther;
+			}
+			case 3 :
+				if ( numOtherNeutralHadrons != 0 ) return threeProngOther;
+				switch ( numPi0s ) {
+				case 0:
+					return threeProng0Pi0;
+				case 1:
+					return threeProng1Pi0;
+				default:
+					return threeProngOther;
+				}
+				default:
+					return rare;
+		}
+		return other;
+}
 bool phase2Taus::isNeutrino(const reco::Candidate* daughter)
 {
   return (TMath::Abs(daughter->pdgId()) == 12 || TMath::Abs(daughter->pdgId()) == 14 || TMath::Abs(daughter->pdgId()) == 16 || TMath::Abs(daughter->pdgId()) == 18);
