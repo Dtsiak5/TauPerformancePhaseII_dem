@@ -162,11 +162,11 @@ class phase2Taus : public edm::one::EDAnalyzer<edm::one::SharedResources>  {
   float tau_iso_pv; //Dem
   int Nparticles; 
   int Ngammas; 
-  //bool isTau = false;
-  //bool iselectron = false;
-  //bool ismuon = false;
+    bool isLeptonic=false;
+     bool isHadronic=false;
 
-	enum decayModes{
+
+  enum decayModes{
 		electron,
 		muon,
 		oneProngOther,
@@ -179,13 +179,14 @@ class phase2Taus : public edm::one::EDAnalyzer<edm::one::SharedResources>  {
 		rare,
 		other
 	};
-
 	decayModes getGenTauDecayMode(const reco::GenParticle* genTau)const;
-
 	template<class T>
 	void countDecayProducts(const T* genParticle,
 			int& numElectrons, int& numElecNeutrinos, int& numMuons, int& numMuNeutrinos,
-			int& numChargedHadrons, int& numPi0s, int& numOtherNeutralHadrons, int& numPhotons) const;  
+			int& numChargedHadrons, int& numPi0s, int& numOtherNeutralHadrons, int& numPhotons) const;
+
+
+  
   reco::Candidate::LorentzVector GetVisibleP4(std::vector<const reco::GenParticle*>& daughters);
   void findDaughters(const reco::GenParticle* mother, std::vector<const reco::GenParticle*>& daughters);
   bool isNeutrino(const reco::Candidate* daughter);
@@ -197,28 +198,15 @@ class phase2Taus : public edm::one::EDAnalyzer<edm::one::SharedResources>  {
       // ----------member data ---------------------------
 };
 
-//
-// constants, enums and typedefs
-//
-
-//
-// static data member definitions
-//
-
-//
-// constructors and destructor
 
 template<class T>
 void phase2Taus::countDecayProducts(const T* genParticle,
 		int& numElectrons, int& numElecNeutrinos, int& numMuons, int& numMuNeutrinos,
 		int& numChargedHadrons, int& numPi0s, int& numOtherNeutralHadrons, int& numPhotons)const{
-
 	if(!genParticle)return;
-
 	int absPdgId = TMath::Abs(genParticle->pdgId());
 	int status   = genParticle->status();
 	int charge   = genParticle->charge();
-
 	if ( absPdgId == 111 ) ++numPi0s;
 	else if ( status == 1 ) {
 		if      ( absPdgId == 11 ) ++numElectrons;
@@ -238,14 +226,23 @@ void phase2Taus::countDecayProducts(const T* genParticle,
 		unsigned numDaughters = genParticle->numberOfDaughters();
 		for ( unsigned iDaughter = 0; iDaughter < numDaughters; ++iDaughter ) {
 			const reco::GenParticle* daughter = dynamic_cast<const reco::GenParticle*>(genParticle->daughter(iDaughter));
-
 			countDecayProducts<reco::GenParticle>(daughter,
 					numElectrons, numElecNeutrinos, numMuons, numMuNeutrinos,
 					numChargedHadrons, numPi0s, numOtherNeutralHadrons, numPhotons);
 		}
 	}
 }
+//
+// constants, enums and typedefs
+//
 
+//
+// static data member definitions
+//
+
+//
+// constructors and destructor
+//
 phase2Taus::phase2Taus(const edm::ParameterSet& iConfig):
   vtxToken_(consumes<std::vector<reco::Vertex> >(iConfig.getParameter<edm::InputTag>("vertices"))),
   tauToken_(consumes<pat::TauCollection>(iConfig.getParameter<edm::InputTag>("taus"))),
@@ -323,8 +320,8 @@ phase2Taus::phase2Taus(const edm::ParameterSet& iConfig):
    tree->Branch("tauPuCorrPtSum"  ,&tauPuCorrPtSum_);
    tree->Branch("taufootprintCorrection"  ,&taufootprintCorrection_);
    tree->Branch("tauphotonPtSumOutsideSignalCone"  ,&tauphotonPtSumOutsideSignalCone_);
-   tree->Branch("electron", electron, "electron/I");
-   tree->Branch("muon", muon, "muon/I");
+   tree->Branch("isLeptonic", isLeptonic, "isLeptonic/B");
+   tree->Branch("isHadronic", isHadronic, "isHadronic/B");
    /*
    OrgTaustree = fs->make<TTree>("OrgPFTaus", "OrgPFTaus");
    OrgTaustree->Branch("run",     &run_);
@@ -427,9 +424,6 @@ phase2Taus::phase2Taus(const edm::ParameterSet& iConfig):
    jetTree->Branch("tauPuCorrPtSum"  ,&tauPuCorrPtSum_);
    jetTree->Branch("taufootprintCorrection"  ,&taufootprintCorrection_);
    jetTree->Branch("tauphotonPtSumOutsideSignalCone"  ,&tauphotonPtSumOutsideSignalCone_);
-   //jetTree->Branch("electron", electron, "electron/I");
-   //jetTree->Branch("muon", muon, "muon/I");
-
    /*
    OrgTausjetTree = fs->make<TTree>(      "jetOrgPFTaus",   "jetOrgPFTaus"       );
    OrgTausjetTree->Branch("run",     &run_);
@@ -533,8 +527,14 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
    for (unsigned int iJet = 0; iJet < jetHandle->size() ; ++iJet){
      pat::JetRef jetCand(jetHandle, iJet);
      if(jetCand->pt() < 18 )continue;
-     bool isATau=false;
+     //bool isLeptonic=false;
+     //bool isHadronic=false;
 
+   //for (auto genTau : GenTaus){
+   //     if (getGenTauDecayMode(genTau) == electron||muon) isLeptonic=true;
+   //          else isHadronic=true;
+   //
+     bool isATau=false;
      for(auto genTau : GenTaus){
        std::vector<const reco::GenParticle*> genTauDaughters;
        findDaughters(genTau, genTauDaughters);
@@ -543,8 +543,13 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
        genTauEta_ = (float) genTauVis.eta();
        if (reco::deltaR(jetCand->eta(),jetCand->phi(),genTauVis.eta(),genTauVis.phi()) < 0.5)
 	        isATau=true;
+       if (getGenTauDecayMode(genTau) == electron||muon) {
+             isLeptonic=true;
+	}
+       else {
+              isHadronic=true;
+	}
      }
-
      bool isAEle=false;
      for(auto genEle : GenEles){
        if (reco::deltaR(jetCand->eta(),jetCand->phi(),genEle->eta(),genEle->phi()) < 0.5)
@@ -557,18 +562,10 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
      }
      if(!isATau && !isAEle && !isAMu)
        Jets.push_back(*jetCand);
-   } 
-   bool isLeptonic = false;
-   bool isHadronic = false;
-
-   for (auto genTau :GenTaus){
-     if (getGenTauDecayMode(genTau) == electron||muon) isLeptonic=true;
-     else isHadronic=true;
-    }   
+   }   
    std::cout<<"Run "<< run_<<" Event "<<event_<<" Lumi section "<<lumis_<<std::endl;
    std::cout<<"RecoTausSize: " <<taus->size()<<std::endl;
    std::cout<<"GenTausSize: "<<GenTaus.size()<<std::endl;
-  
 
    genTauPt_=-10;
    genTauEta_=-10;
@@ -1408,8 +1405,16 @@ void phase2Taus::findDaughters(const reco::GenParticle* mother, std::vector<cons
     }
   }
 }
+
 phase2Taus::decayModes phase2Taus::getGenTauDecayMode(const reco::GenParticle* genTau)const{
-        	int numElectrons           = 0;
+	//--- determine generator level tau decay mode
+		//
+		//    NOTE:
+		//        (1) function implements logic defined in PhysicsTools/JetMCUtils/src/JetMCTag::genTauDecayMode
+		//            for different type of argument
+		//        (2) this implementation should be more robust to handle cases of tau --> tau + gamma radiation
+		//
+		int numElectrons           = 0;
 		int numElecNeutrinos       = 0;
 		int numMuons               = 0;
 		int numMuNeutrinos         = 0;
@@ -1417,14 +1422,11 @@ phase2Taus::decayModes phase2Taus::getGenTauDecayMode(const reco::GenParticle* g
 		int numPi0s                = 0;
 		int numOtherNeutralHadrons = 0;
 		int numPhotons             = 0;
-               
 		countDecayProducts<reco::GenParticle>(genTau,
 			numElectrons, numElecNeutrinos, numMuons, numMuNeutrinos,
 			numChargedHadrons, numPi0s, numOtherNeutralHadrons, numPhotons);
-                   
 		if      ( numElectrons == 1 && numElecNeutrinos == 1 ) return electron;
 		else if ( numMuons     == 1 && numMuNeutrinos   == 1 ) return muon;
-               
 		switch ( numChargedHadrons ) {
 		case 1 :
 			if ( numOtherNeutralHadrons != 0 ) return oneProngOther;
@@ -1453,6 +1455,7 @@ phase2Taus::decayModes phase2Taus::getGenTauDecayMode(const reco::GenParticle* g
 		}
 		return other;
 }
+
 bool phase2Taus::isNeutrino(const reco::Candidate* daughter)
 {
   return (TMath::Abs(daughter->pdgId()) == 12 || TMath::Abs(daughter->pdgId()) == 14 || TMath::Abs(daughter->pdgId()) == 16 || TMath::Abs(daughter->pdgId()) == 18);
