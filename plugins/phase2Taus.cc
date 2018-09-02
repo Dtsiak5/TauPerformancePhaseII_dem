@@ -534,6 +534,8 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
    //     if (getGenTauDecayMode(genTau) == electron||muon) isLeptonic=true;
    //          else isHadronic=true;
    //
+     isLeptonic=false;
+     isHadronic=false;
      bool isATau=false;
      for(auto genTau : GenTaus){
        std::vector<const reco::GenParticle*> genTauDaughters;
@@ -543,12 +545,24 @@ phase2Taus::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
        genTauEta_ = (float) genTauVis.eta();
        if (reco::deltaR(jetCand->eta(),jetCand->phi(),genTauVis.eta(),genTauVis.phi()) < 0.5)
 	        isATau=true;
-       if (getGenTauDecayMode(genTau) == electron||muon) {
+       if (getGenTauDecayMode(genTau) == electron || getGenTauDecayMode(genTau) == muon) {
              isLeptonic=true;
+ 	     isHadronic=false;
+          std::cout<<"isLeptonic "<<isLeptonic<<"isHadronic "<<isHadronic<<"event"<<event_<<std::endl;
 	}
+       //if (getGenTauDecayMode(genTau) == !electron && !muon){
+         // isHadronic=true;
+           //    std::cout<<"isHadronic "<<isHadronic<<"event"<<event_<<std::endl;
+	//} 
+     /*   else if (getGenTauDecayMode(genTau) != electron && getGenTauDecayMode(genTau) != muon) {
+		isHadronic=true; 
+       			 std::cout<<"isHadronic "<<isHadronic<<"event"<<event_<<std::endl;
+	}*/
        else {
-              isHadronic=true;
-	}
+             isLeptonic=false;
+             isHadronic=true;  
+              std::cout<<"isHadronic "<<isHadronic<<"isLeptonic"<<isLeptonic<<"event"<<event_<<std::endl; 
+		}
      }
      bool isAEle=false;
      for(auto genEle : GenEles){
